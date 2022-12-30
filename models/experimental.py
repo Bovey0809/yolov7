@@ -72,9 +72,7 @@ class Ensemble(nn.ModuleList):
         super(Ensemble, self).__init__()
 
     def forward(self, x, augment=False):
-        y = []
-        for module in self:
-            y.append(module(x, augment)[0])
+        y = [module(x, augment)[0] for module in self]
         # y = torch.stack(y).max(0)[0]  # max ensemble
         # y = torch.stack(y).mean(0)  # mean ensemble
         y = torch.cat(y, 1)  # nms ensemble
@@ -160,7 +158,7 @@ class ONNX_ORT(nn.Module):
     '''onnx module with ONNX-Runtime NMS operation.'''
     def __init__(self, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=640, device=None, n_classes=80):
         super().__init__()
-        self.device = device if device else torch.device("cpu")
+        self.device = device or torch.device("cpu")
         self.max_obj = torch.tensor([max_obj]).to(device)
         self.iou_threshold = torch.tensor([iou_thres]).to(device)
         self.score_threshold = torch.tensor([score_thres]).to(device)
@@ -197,7 +195,7 @@ class ONNX_TRT(nn.Module):
     def __init__(self, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=None ,device=None, n_classes=80):
         super().__init__()
         assert max_wh is None
-        self.device = device if device else torch.device('cpu')
+        self.device = device or torch.device('cpu')
         self.background_class = -1,
         self.box_coding = 1,
         self.iou_threshold = iou_thres
@@ -227,7 +225,7 @@ class End2End(nn.Module):
     '''export onnx or tensorrt model with NMS operation.'''
     def __init__(self, model, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=None, device=None, n_classes=80):
         super().__init__()
-        device = device if device else torch.device('cpu')
+        device = device or torch.device('cpu')
         assert isinstance(max_wh,(int)) or max_wh is None
         self.model = model.to(device)
         self.model.model[-1].end2end = True
@@ -251,7 +249,7 @@ def attempt_load(weights, map_location=None):
         attempt_download(w)
         ckpt = torch.load(w, map_location=map_location)  # load
         model.append(ckpt['ema' if ckpt.get('ema') else 'model'].float().fuse().eval())  # FP32 model
-    
+
     # Compatibility updates
     for m in model.modules():
         if type(m) in [nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU]:
@@ -260,13 +258,12 @@ def attempt_load(weights, map_location=None):
             m.recompute_scale_factor = None  # torch 1.11.0 compatibility
         elif type(m) is Conv:
             m._non_persistent_buffers_set = set()  # pytorch 1.6.0 compatibility
-    
+
     if len(model) == 1:
         return model[-1]  # return model
-    else:
-        print('Ensemble created with %s\n' % weights)
-        for k in ['names', 'stride']:
-            setattr(model, k, getattr(model[-1], k))
-        return model  # return ensemble
+    print('Ensemble created with %s\n' % weights)
+    for k in ['names', 'stride']:
+        setattr(model, k, getattr(model[-1], k))
+    return model  # return ensemble
 
 
